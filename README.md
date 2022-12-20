@@ -1,6 +1,6 @@
 # Trading-Support-Tools
 
-Some basic automational tools for generating confirmation letter and unwind details in FICC Derivatives Trading.
+Some basic automational tools for generating confirmation letter and unwind details in FICC Derivatives Trading Internship.
 
 You could use Pyinstaller to transform .py to exe.
 
