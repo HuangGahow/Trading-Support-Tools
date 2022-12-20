@@ -14,5 +14,8 @@ conda create -n aotu python=3.6
 #activate virtual environment
 conda activate aotu
 
+#delete virtual environment
+conda remove -n aotu--all
+
 #Pyinstaller packaginhg
-Pyinstaller -F -w -i apple.ico py_word.py
+Pyinstaller -F -w -i apple.ico(image) py_word.py
