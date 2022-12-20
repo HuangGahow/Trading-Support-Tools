@@ -1,0 +1,149 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Nov  8 09:22:57 2022
+
+@author: Gahow
+"""
+
+import docx
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import os
+np.set_printoptions(suppress=True) #no fucking %d+e%d
+# In[0]
+def DateStrtoTime(x):
+    if type(x) == datetime:
+        stamp = x
+        
+    else:
+        test = x.split(',')
+    
+        calendar={'January':'01','February':'02','March':'03','April':'04', \
+                  'May':'05','June':'06','July':'07','August':'08','September':'09', \
+                      'October':'10','November':'11', 'December':'12'}
+        day = int(test[0])                
+        month = int(calendar[test[1]])
+        year = int(test[2])
+    
+        stamp = datetime(year,month,day)
+    
+    return stamp
+
+def GetBorS(x):
+    EAindex1  = x.find('(')  #find position of (
+    #EAindex2  = x.find(' -Commission')
+    EquityAmount = x[EAindex1+1]
+    if EquityAmount =='F': #(Final price - initial price)
+        BorS = 'B'
+    elif EquityAmount =='I':
+        BorS = 'S'
+    else:
+        BorS = np.nan
+    return BorS
+
+def BBGTicker(x):
+    dict1 = {'TF2212':'TFCZ2','TS2212':'TFSZ2','T2212':'TFTZ2', \
+             'TF2303':'TFCH3','T2303':'TFTH3','TS2303':'TFSH3'}
+    BBG = dict1[x]
+    return BBG
+# In[1] 
+def Get_Unwind_Data(fn):
+    
+    doc = docx.Document(fn)
+    Date = doc.tables[0].rows[4].cells[1].text.strip() #get 0 row 1st cell in 1st table
+
+    list1 = ['ReferenceNumber','Contract','ONAprior','UNA','ONApost', 'IniTraDate', \
+         'IniPrice', 'UnwindDate', 'UnwindPrice', 'EA1','EA2']
+
+    list2 = [] 
+    for key, value in enumerate(list1,start = 7 ):
+        list2.append(doc.tables[0].rows[key].cells[1].text)
+
+    ValueSeries = pd.Series(list2, index=list1)
+    
+    ValueSeries['Date'] = DateStrtoTime(Date)
+    ValueSeries['BBG'] = ValueSeries['Contract'].split(' ')[-1].split(')')[0]
+    ValueSeries['Contract'] = ValueSeries['Contract'].split('(')[0]
+    ValueSeries['ONAprior'] = int(ValueSeries['ONAprior'].split('(')[1].split()[0])*1000000
+    ValueSeries['UNA'] = int(ValueSeries['UNA'].split('(')[1].split()[0])*1000000
+    ValueSeries['ONApost'] = int(ValueSeries['ONApost'].split('(')[1].split()[0])*1000000
+    ValueSeries['IniTraDate'] = DateStrtoTime(ValueSeries['IniTraDate'])
+
+    ValueSeries['IniPrice'] = float(ValueSeries['IniPrice'])
+    ValueSeries['UnwindPrice'] = float(ValueSeries['UnwindPrice'])
+    #ValueSeries['EA2'] = float(ValueSeries['EA2'])
+    
+    ValueSeries['UnwindDate'] = DateStrtoTime(ValueSeries['UnwindDate'])
+    ValueSeries['EA1'] = GetBorS(ValueSeries['EA1'])
+    
+    ValueSeries['EA2'] = float(''.join(ValueSeries['EA2'].split(',')))
+    ValueSeries['B/S'] = ValueSeries['ReferenceNumber'].split('_')[-2]
+    ValueSeries['BBGVeri'] = ValueSeries['BBG']==BBGTicker(ValueSeries['Contract'])
+    ValueSeries = np.array(ValueSeries).reshape(1,-1)
+    colname = list1+['Date','BBG','B/S','BBGVeri']
+    d1 = pd.DataFrame(ValueSeries,columns=colname)
+    
+    return d1
+
+# In[2]
+
+path = input("please input your 北向国债期货连接端's path:")
+allKeyPath = input("please input your file folder's path:")
+files = os.listdir(allKeyPath)
+file_path = []
+
+for file in files:
+    # combine file's path
+    file_path.append(allKeyPath + '/' + file)
+    
+d0 = pd.DataFrame() #d0 is data from Excel
+for filename in file_path:
+    
+    fn =  filename
+    d1 = Get_Unwind_Data(fn)
+    d0 =d0.append(d1)
+
+
+
+# In[3]
+
+
+uwfuture = pd.read_excel(path, sheet_name="国债期货结算")
+#delete the rows include missing value
+uwfuture = uwfuture.dropna(axis=0, subset=['交易编号'])
+Date = uwfuture['平仓日期'].iloc[-1]
+uwfuture = uwfuture.loc[uwfuture['平仓日期'] == Date]
+
+
+uwfuture['剩余名义本金（不含价格）']=uwfuture['剩余名义本金（不含价格）'].apply(lambda x: round(x,1))
+uwfuture['结算名义本金（不含价格）']=uwfuture['结算名义本金（不含价格）'].apply(lambda x: round(x,1))
+#python科学计数法，1.21+e8 =1209999.999
+uwfuture.drop(['Unnamed: 0','Unnamed: 3','Unnamed: 10','Unnamed: 11'],axis = 1, inplace = True)
+uwfuture['Contract'] = uwfuture['交易编号'].iloc[0].split('.')[0].split('_')[-1]
+
+
+result = uwfuture.merge(d0, left_on='交易编号', right_on='ReferenceNumber',how='left')
+result['UnwindDateVeri'] =(result['平仓日期']== result['UnwindDate'])
+result['P0Veri'] =(result['Unnamed: 4']== result['IniPrice'])
+result['PtVeri'] =(result['Unnamed: 5']== result['UnwindPrice'])
+result['ContractVeri']=(result['Contract_x']==result['Contract_y'])
+result['UNAVeri'] =(result['结算名义本金（不含价格）']== result['UNA'])
+result['ONApriorVeri'] =(result['ONApost']+result['UNA']== result['ONAprior'])
+result['ONApostVeri'] =(result['剩余名义本金（不含价格）']== result['ONApost'])
+result['B/SVeri'] =(result['EA1']== result['B/S'])
+result['IniTraDateVeri'] =(result['IniTraDate']== result['Unnamed: 17'])
+result['EA2Veri']=(result['结算金额']==result['EA2'])
+
+
+
+
+
+report = result.loc[:,['交易编号','UnwindDateVeri', \
+                       'P0Veri','PtVeri','UNAVeri', 'ONApriorVeri','ONApostVeri','B/SVeri', \
+                           'IniTraDateVeri','EA2Veri','BBGVeri']]
+folder = os.getcwd() + '\\Reports\\'
+if not os.path.exists(folder):
+    os.makedirs(folder)    
+report.to_excel(folder+'Unwind_Report.xlsx',sheet_name='Report',index=False,header=True)
+print("Done")
