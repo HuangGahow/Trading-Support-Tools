@@ -4,13 +4,13 @@ Some basic automational tools for generating confirmation letter and unwind deta
 
 You could use Pyinstaller to transform .py to exe.
 
-Remainder: 
+## Tips: 
 
-Use a virtual enviroment will avoid creating too large size of file.
+You could use a virtual enviroment will avoid creating too large size of file.
 
 Due to Pyinstaller will package all modules in your py environment, creating a new virtual enviroments without installing unnessesary modules will helps a lot.
 
-Example:
+## Example:
 
 #create virtual environment
 
